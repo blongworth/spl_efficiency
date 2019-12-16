@@ -14,6 +14,7 @@ library(odbc)
 library(amstools)
 library(tidyverse)
 ```
+
 # Total efficiency
 
 Anne's efficiency on the dual bellows line per day and per running day.
@@ -72,3 +73,107 @@ Efficiency by total days `r e[[1]]`
 Efficiency per run day `r e[[2]]`
 
 # Efficiency of client sample production
+
+The same as above, but for client samples only. What we're trying to get at here is how single-shot primaries changed production efficiency, so this is an imperfect metric. As a first attempt, let's define client as "not standards".
+
+```{r}
+effdatecli <- function(from, to) {
+  
+  con <- conNOSAMS()
+  sql <- "SELECT * 
+         FROM graphite 
+         JOIN target ON graphite.osg_num = target.osg_num
+         WHERE gf_operator_id = 70
+         AND rec_num NOT IN (SELECT rec_num FROM standards)
+         AND gf_date BETWEEN ? AND ?
+         AND (gf_reactor BETWEEN 410 AND 500
+         OR gf_reactor BETWEEN 41 AND 50)"
+  query <- odbc::dbSendQuery(con, sql)
+  odbc::dbBind(query, list(from, to))
+  data <- odbc::dbFetch(query)
+  odbc::dbClearResult(query)
+  
+  list(eff(data),  
+       effrd(data))  
+}
+
+```
+
+### Before switch to single-shot standards
+
+```{r}
+e <- effdatecli("2017-01-01", "2018-05-01")
+```
+
+Efficiency by total days `r e[[1]]`
+
+Efficiency per run day `r e[[2]]`
+
+
+### After switch to single-shot standards
+
+```{r}
+e <- effdatecli("2018-05-01", "2019-12-16")
+```
+
+Efficiency by total days `r e[[1]]`
+
+Efficiency per run day `r e[[2]]`
+
+Given that efficiency per day is the same regardless of making standards, I think something might be wrong here. Maybe the double run thing?
+
+# Standards efficiency
+
+How many standards per day and per run day are we making? Need to add something to figure out how many targets too to account for splits.
+
+```{r}
+effdatestd <- function(from, to) {
+  
+  con <- conNOSAMS()
+  sql <- "SELECT * 
+         FROM graphite 
+         JOIN target ON graphite.osg_num = target.osg_num
+         WHERE gf_operator_id = 70
+         AND rec_num IN (
+           SELECT rec_num 
+           FROM standards 
+           WHERE Fm_cons = 1.0398 
+           AND rec_num NOT IN (34148, 87012))
+         AND gf_date BETWEEN ? AND ?
+         AND (gf_reactor BETWEEN 410 AND 500
+         OR gf_reactor BETWEEN 41 AND 50)"
+  query <- odbc::dbSendQuery(con, sql)
+  odbc::dbBind(query, list(from, to))
+  data <- odbc::dbFetch(query)
+  odbc::dbClearResult(query)
+  
+  list(eff(data),  
+       effrd(data))  
+}
+
+#dbGetQuery(con, "select * from target") %>% str
+#odbcListColumns(con, "graphite")
+```
+
+### Before switch to single-shot standards
+
+```{r}
+e <- effdatestd("2017-01-01", "2018-05-01")
+```
+
+Efficiency by total days `r e[[1]]`
+
+Efficiency per run day `r e[[2]]`
+
+
+### After switch to single-shot standards
+
+```{r}
+e <- effdatestd("2018-05-01", "2019-12-16")
+```
+
+Efficiency by total days `r e[[1]]`
+
+Efficiency per run day `r e[[2]]`
+
+Clearly something funky going on here too with more than 10 samples per day.
